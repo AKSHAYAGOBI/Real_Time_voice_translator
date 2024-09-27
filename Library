@@ -1,0 +1,6 @@
+pip install playsound
+pip install SpeechRecognition
+pip install googletrans==4.0.0-rc1
+pip install gTTs
+pip install gTTS-token
+pip install playsound SpeechRecognition gtts pyaudio
