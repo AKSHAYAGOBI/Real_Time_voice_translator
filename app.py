@@ -2,12 +2,14 @@ from flask import Flask, render_template, request, jsonify
 import speech_recognition as sr
 from gtts import gTTS
 import os
-from playsound import playsound
-from googletrans import Translator
+import pygame
+import time
+pygame.mixer.init()
+from deep_translator import GoogleTranslator
 
 app = Flask(__name__)
 
-translator = Translator()
+translator = GoogleTranslator(source='auto')
 
 @app.route('/')
 def index():
@@ -15,15 +17,21 @@ def index():
 
 @app.route('/recognize', methods=['POST'])
 def recognize():
+    data = request.json or {}
+    source_lang = data.get('source_lang', 'en')
     recognizer = sr.Recognizer()
+    recognizer.energy_threshold = 300
     with sr.Microphone() as source:
+        recognizer.adjust_for_ambient_noise(source, duration=1)
         print("Please speak something...")
-        audio = recognizer.listen(source)  # Listen for the first phrase
+        audio = recognizer.listen(source, timeout=5)
         print("Recognizing...")
         try:
-            text = recognizer.recognize_google(audio)
+            text = recognizer.recognize_google(audio, language=source_lang)
             print("You said: " + text)
             return jsonify({"text": text})
+        except sr.WaitTimeoutError:
+            return jsonify({"error": "No speech detected within 5 seconds. Try again."})
         except sr.UnknownValueError:
             return jsonify({"error": "Sorry, I could not understand the audio."})
         except sr.RequestError as e:
@@ -33,19 +41,27 @@ def recognize():
 def translate():
     data = request.json
     text = data['text']
+    source_lang = data.get('source_lang', 'auto')
     target_language = data['language']
-    
-    translated = translator.translate(text, dest=target_language)
-    return jsonify({"translated_text": translated.text})
+
+    translated = translator.translate(text, source=source_lang, target_language=target_language)
+    return jsonify({"translated_text": translated})
 
 @app.route('/speak', methods=['POST'])
 def speak():
-    text = request.json['text']
-    language = 'en'  # Set your desired output language for speech
+    data = request.json
+    text = data['text']
+    language = data.get('language', 'en')
     tts = gTTS(text=text, lang=language, slow=False)
     tts.save('output.mp3')
-    playsound('output.mp3')  # Play the converted file
-    os.remove('output.mp3')  # Remove the file after playing
+    pygame.mixer.music.load('output.mp3')
+    pygame.mixer.music.play()
+    while pygame.mixer.music.get_busy():
+        time.sleep(0.1)
+    try:
+        os.remove('output.mp3')
+    except OSError:
+        pass  # File already deleted or not found
     return jsonify({"message": "Speech output completed."})
 
 if __name__ == '__main__':
